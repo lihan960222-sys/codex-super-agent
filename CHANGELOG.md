@@ -1,5 +1,9 @@
 # Changes
 
+## Validation model baseline — 2026-11-05
+
+Pin all three validation rounds and final verification to the user-selected Router `gpt-6-luna / medium` and Worker `gpt-6.1-sol / medium`. Model-switch cases remain isolated exceptions with recorded actual values. Unavailable models block testing instead of silently falling back. Documentation only; production settings unchanged and no tests executed.
+
 ## Validation plan — 2026-11-05
 
 Document a three-round, conversation-driven validation process with 120 synthetic scenarios, 24 critical cases repeated three times per round, and five multi-turn stories. Each round freezes the code until its full test results are collected, then groups minimal fixes before the next round; final verification follows the third repair batch. Distinguish simulated transport, native Router inference, real Worker execution and actual Telegram delivery.
