@@ -1,5 +1,11 @@
 # Changes
 
+## Round 3 main collection and offline timing — 2026-11-05
+
+Resume the user-paused run on the identical product/catalog hash, preserve completed evidence and retry interrupted fixtures in new directories. All 185 main executions collected: 179 pass / 6 fail / 0 blocked. All 18 real Worker/file cases pass; native coordination failures remain. Recovery12, seeded200 states/input retention, scale20/100/500 and actual33-decision rotation pass; adjustment-card native supplement fails; the fresh continuous30min soak is still running. No product fix or deployment before the entire round ends.
+
+Add offline evidence timing for accepted control receipts, exact-owner-linked real Worker acceptance and accepted Router text at the simulated transport boundary. Reject unavailable/ambiguous measurements rather than infer success. Four observed RED-to-GREEN analyzer regressions and full252/252 Windows checks pass. These are test/report tools, not production logic changes.
+
 ## Conversation validation repair 2 — 2026-11-05
 
 After collecting the entire second round, fix recent single-task grounding without overriding a conflicting named task; recognize complementary pause scope without globally pausing the exception; reject stop/pause mismatches; search whitespace-separated terms; require a bounded owner-input tail read before deciding truncated messages. Validate settings shape synchronously so the Router can correct malformed per-worker parameters, and require displayName for nicknames. Retain actual recent control targets for reversal, close target-aligned adjusted questions, and strengthen existing-responsibility reuse instructions.
