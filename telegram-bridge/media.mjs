@@ -102,8 +102,9 @@ export class Media {
       await fs.writeFile(file,Buffer.concat(chunks),{flag:'wx'});
     }catch{throw Error('附件下载失败或超过大小限制，请稍后重新发送。');}
     const caption=String(message.caption||'').trim();
-    if(image)return {text:caption||'请查看并说明这张图片。',input:[{type:'localImage',path:file}]};
-    if(!voice)return {text:(caption||'请读取并处理这个文件。')+`\n用户提供的本地文件：${file}`,input:[]};
+    const files=voice?[]:[{path:file,sha256:createHash('sha256').update(await fs.readFile(file)).digest('hex')}];
+    if(image)return {text:caption||'请查看并说明这张图片。',input:[{type:'localImage',path:file}],files};
+    if(!voice)return {text:(caption||'请读取并处理这个文件。')+`\n用户提供的本地文件：${file}`,input:[],files};
     const transcript=await this.transcribe(file,folder,signal);return {text:caption?caption+'\n'+transcript:transcript,input:[],transcript};
   }
   async transcribe(file,folder,signal) {

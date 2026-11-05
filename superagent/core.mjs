@@ -26,7 +26,7 @@ export class Core {
       this.store.put('event',eventId,{...event,status:'assigned'});this.store.enqueue('launch',id,{taskId:id,generation:1,epoch:control.epoch});return task;
     });
   }
-  addInput(event,taskId){const id=event.id+':'+taskId;if(!this.store.get('input',id))this.store.put('input',id,{id,eventId:event.id,...event.ownerEventId?{ownerEventId:event.ownerEventId}:{},taskId,text:event.text,media:event.media||[],status:'pending',at:event.at||now()});const stored=this.store.get('event',event.id);if(stored?.status==='received')this.store.put('event',event.id,{...stored,status:'assigned'});return id;}
+  addInput(event,taskId){const id=event.id+':'+taskId;if(!this.store.get('input',id))this.store.put('input',id,{id,eventId:event.id,...event.ownerEventId?{ownerEventId:event.ownerEventId}:{},taskId,text:event.text,media:event.media||[],files:event.files||[],status:'pending',at:event.at||now()});const stored=this.store.get('event',event.id);if(stored?.status==='received')this.store.put('event',event.id,{...stored,status:'assigned'});return id;}
   attach(eventId,taskId){
     return this.store.atomic(()=>{
       const event=this.store.get('event',eventId),t=this.task(taskId);if(!event)throw Error('Unknown event');if(stopped(t))throw Error('Task stopped; explicit resume required');

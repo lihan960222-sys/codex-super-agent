@@ -1,5 +1,13 @@
 # Changes
 
+## Conversation validation repair 2 — 2026-11-05
+
+After collecting the entire second round, fix recent single-task grounding without overriding a conflicting named task; recognize complementary pause scope without globally pausing the exception; reject stop/pause mismatches; search whitespace-separated terms; require a bounded owner-input tail read before deciding truncated messages. Validate settings shape synchronously so the Router can correct malformed per-worker parameters, and require displayName for nicknames. Retain actual recent control targets for reversal, close target-aligned adjusted questions, and strengthen existing-responsibility reuse instructions.
+
+Carry received attachment metadata from intake to selected task input and stage validated hash-matching copies inside that task workspace; originals remain unchanged. Carry structured media error facts and reject a fabricated voice-recognition explanation for oversized documents. No model changes, new dependencies, production task writes or deployment.
+
+Verification: 13 observed failing deterministic regressions became green; full Windows suite 248/248 passed. Third-round native validation and the real-clock soak are next. Soak timing starts after connection and requires continuous heartbeats; no accelerated clock substitutes for 30 minutes.
+
 ## Round 2 collected — 2026-11-05
 
 Complete coverage: 185 executions, 168 pass / 17 fail / 0 blocked; 12 deterministic recovery timelines pass, four native cache/card supplements pass and adjustment-question cleanup fails. Reuse 94 identical post-repair verification executions with explicit provenance and matching product/catalog hashes; complete the other 91 on the same product version. Phase-specific expressions are not inherited. A tested aggregator rejects missing/duplicate attempts and retains raw failure evidence. Full Windows suite: 235/235 passed after a preserved isolated test-process anomaly and limited-concurrency recheck. Product repair 2 has not started at this checkpoint; see `docs/validation/round-2.md`.
