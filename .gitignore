@@ -1,0 +1,14 @@
+node_modules/
+config.json
+superagent-settings.json
+superagent-state/
+releases/
+backups/
+*.sqlite*
+*.token
+*.log
+*.enc
+.env*
+auth.json
+local/
+coverage/

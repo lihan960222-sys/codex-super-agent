@@ -1,0 +1,24 @@
+import {randomUUID} from 'node:crypto';
+export class Approvals {
+ constructor(deps){Object.assign(this,deps);this.connectionId=randomUUID();}
+ valid(row){const t=this.core.task(row.taskId);return row.connectionId===this.connectionId&&row.status==='pending'&&!t.manualStop&&t.status!=='paused'&&t.generation===row.generation&&t.threadId===row.request.params.threadId&&(!t.turnId||t.turnId===row.request.params.turnId);}
+ async present(task,request){const p=request.params,method=request.method;if(!['item/commandExecution/requestApproval','item/fileChange/requestApproval','item/permissions/requestApproval','item/tool/requestUserInput'].includes(method)){this.native.rpc.reject(request.id,'Unsupported explicit owner interaction');return;}
+  const changes=method==='item/fileChange/requestApproval'?this.store.get('native-item',p.threadId+':'+p.itemId)?.changes:null;
+  if(method==='item/fileChange/requestApproval'&&!changes?.length||method==='item/commandExecution/requestApproval'&&!p.command&&!p.networkApprovalContext){this.native.rpc.respond(request.id,{decision:'decline'});return;}
+  const existing=this.store.list('approval','pending').find(a=>a.connectionId===this.connectionId&&a.request.id===request.id);if(existing)return;
+  const id=randomUUID(),row={id,taskId:task.id,generation:task.generation,connectionId:this.connectionId,status:'pending',request,answers:{},createdAt:Date.now()};this.store.put('approval',id,row);
+  if(method==='item/tool/requestUserInput'){
+    for(const q of p.questions||[]){const key=id+':'+q.id;this.store.put('question',key,{id:key,kind:'native',approvalId:id,nativeQuestionId:q.id,eventId:task.sourceEventId,taskId:task.id,status:'pending',text:q.question});const rows=(q.options||[]).map((o,index)=>[{text:o.label,callback_data:'qa:'+id+':'+(p.questions||[]).indexOf(q)+':'+index}]);await this.delivery.enqueue('native-question:'+key,{questionId:key,taskId:task.id,text:q.question,replyMarkup:{inline_keyboard:rows}});}return;
+  }
+  const details=[task.title,p.command,p.reason,changes?JSON.stringify(changes):null,p.networkApprovalContext?JSON.stringify(p.networkApprovalContext):null,p.permissions?JSON.stringify(p.permissions):null,p.additionalPermissions?JSON.stringify(p.additionalPermissions):null,p.grantRoot?'授权目录：'+p.grantRoot:null].filter(Boolean).join('\n');
+  await this.delivery.enqueue('approval:'+id,{taskId:task.id,text:details+'\n\n批准仅对此次请求生效。',replyMarkup:{inline_keyboard:[[{text:'允许一次',callback_data:'ap:'+id+':yes'},{text:'拒绝',callback_data:'ap:'+id+':no'}]]}});
+ }
+ async callback(cb){const [kind,id,choice,option]=String(cb.data).split(':'),row=this.store.get('approval',id);if(!row||!this.valid(row)){await this.telegram('answerCallbackQuery',{callback_query_id:cb.id,text:'此请求已失效。'});return;}
+  if(kind==='qa'){const q=row.request.params.questions?.[Number(choice)],o=q?.options?.[Number(option)];if(!q||!o)throw Error('Invalid answer selection');await this.answer(row,q.id,o.label);}
+  else if(kind==='ap'&&['yes','no'].includes(choice)){let result;if(row.request.method==='item/permissions/requestApproval')result={permissions:choice==='yes'?row.request.params.permissions||{}:{},scope:'turn'};else result={decision:choice==='yes'?'accept':'decline'};this.native.rpc.respond(row.request.id,result);this.store.put('approval',id,{...row,status:'answered',answeredAt:Date.now()});}
+  else throw Error('Invalid approval callback');await this.telegram('answerCallbackQuery',{callback_query_id:cb.id});
+ }
+ async answer(row,questionId,text){if(!this.valid(row))throw Error('Question expired after reconnect or stop');row.answers[questionId]={answers:[String(text)]};this.store.put('approval',row.id,row);const q=this.store.get('question',row.id+':'+questionId);if(q)this.store.put('question',q.id,{...q,status:'resolved'});if(row.request.params.questions.every(q=>row.answers[q.id])){this.native.rpc.respond(row.request.id,{answers:row.answers});this.store.put('approval',row.id,{...row,status:'answered'});}}
+ async answerEvent(event,question){const row=this.store.get('approval',question.approvalId);if(!row)throw Error('Question unavailable');await this.answer(row,question.nativeQuestionId,event.text);}
+ resolved(requestId){for(const row of this.store.list('approval','pending'))if(row.connectionId===this.connectionId&&row.request.id===requestId)this.store.put('approval',row.id,{...row,status:'resolved'});}
+}

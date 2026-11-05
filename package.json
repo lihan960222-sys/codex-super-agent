@@ -1,0 +1,11 @@
+{
+  "name": "codex-super-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Persistent Telegram Router and Workers using the local Codex App Server",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "test": "node --test superagent/*.test.mjs telegram-bridge/*.test.mjs"
+  }
+}
