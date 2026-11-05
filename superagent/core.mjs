@@ -43,6 +43,7 @@ export class Core {
     if(plan.mode!=='selected'&&(start.length||stop.length)||plan.mode==='selected'&&!start.length&&!stop.length||start.some(id=>stop.includes(id)))throw Error('Contradictory or empty control plan');
     for(const id of [...start,...stop])this.task(id);
     for(const id of start)if(['completed','failed'].includes(this.task(id).status))throw Error('Finished task needs a new authorized followup, not resume');
+    for(const id of stop)if(['completed','failed'].includes(this.task(id).status))throw Error('Finished task cannot be stopped; report its actual state');
     return {mode:plan.mode,startTaskIds:start,stopTaskIds:stop};
   }
   applyControl(input){return this.store.atomic(()=>{
@@ -66,6 +67,7 @@ export class Core {
     return {plan,...this.store.get('meta','control'),tasks:affected.map(id=>{const t=this.task(id);return {id,title:t.title,status:t.status,generation:t.generation,manualStop:t.manualStop};}),at:now()};
   });}
   stop(id){return this.store.atomic(()=>{
+    if(id!==null&&['completed','failed'].includes(this.task(id).status))throw Error('Finished task cannot be stopped; report its actual state');
     let control=this.store.get('meta','control');if(id===null){control={paused:true,epoch:control.epoch+1};this.store.put('meta','control',control);}
     for(const t of id===null?this.store.list('task'): [this.task(id)]){
       if(id===null&&stopped(t))continue;

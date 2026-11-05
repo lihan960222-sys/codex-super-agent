@@ -1,6 +1,6 @@
 {
   "name": "codex-super-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Persistent Telegram Router and Workers using the local Codex App Server",

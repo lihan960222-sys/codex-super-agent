@@ -12,3 +12,4 @@ backups/
 auth.json
 local/
 coverage/
+*-results.txt

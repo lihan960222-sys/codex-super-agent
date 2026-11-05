@@ -17,7 +17,10 @@ export class Routing {
     const question=this.store.get('question-binding',messageKey(event.chatId,event.replyTo));if(question){const saved=this.store.get('question',question.questionId);event={...event,...saved?.status==='pending'?{questionId:question.questionId}:{closedQuestionId:question.questionId}};}
     const targets=this.targets(event);
     if(targets.length===1){const task=this.core.task(targets[0]);
-      if(['停止','停止任务','停下','stop'].includes(text(event.text).toLowerCase())){this.core.stop(task.id);this.store.put('event',event.id,{...event,status:'control'});return {kind:'stopped',taskId:task.id};}
+      if(['停止','停止任务','停下','stop','取消','取消任务'].includes(text(event.text).toLowerCase())){
+        if(['completed','failed'].includes(task.status)){this.store.put('event',event.id,{...event,status:'candidate',relatedTaskIds:targets});return {kind:'candidate'};}
+        this.control(event,{mode:'selected',stopTaskIds:[task.id]});this.store.put('event',event.id,{...event,status:'control'});return {kind:'stopped',taskId:task.id};
+      }
       if(!task.manualStop&&task.status!=='paused'&&!this.store.get('meta','control').paused&&!event.questionId&&!event.handedBack?.includes(task.id)){
         this.core.attach(event.id,task.id);this.bind(event.chatId,event.messageId,task.id);this.dispatchNotice(event,task);return {kind:'direct',taskId:task.id};
       }
@@ -44,8 +47,10 @@ export class Routing {
     if(event.source!=='telegram')throw Error('Only owner messages control tasks');
     if(question&&!question.options)throw Error('Legacy control question needs fresh structured clarification before confirmation');
     if(question?.controlEpoch!==undefined&&(question.controlEpoch!==this.store.get('meta','control').epoch||question.taskCount!==undefined&&question.taskCount!==this.store.list('task').length||Object.entries(question.generations||{}).some(([id,g])=>this.core.task(id).generation!==g)))throw Error('Control question is stale; clarify again against current state');
-    const receipt=this.core.applyControl(plan);this.store.put('control-receipt',event.id,{eventId:event.id,...receipt});
-    this.store.enqueue('reply','control:'+event.id,{eventId:event.id,text:(receipt.paused?'调度已暂停。':'调度已开启。')+'\n'+receipt.tasks.map(statusText).join('\n')});return receipt;
+    const validated=this.core.validateControl(plan);
+    if(question?.options&&!question.options.some(o=>JSON.stringify(this.core.validateControl(o.plan))===JSON.stringify(validated)))throw Error('Control plan does not match clarification options');
+    const receipt=this.core.applyControl(validated);this.store.put('control-receipt',event.id,{eventId:event.id,...receipt});
+    this.store.enqueue('reply','control:'+event.id,{eventId:event.id,controlTasks:receipt.tasks,text:(receipt.paused?'调度已暂停。':'调度已开启。')+'\n'+receipt.tasks.map(statusText).join('\n')});return receipt;
   }
   decide(id,actions){return this.store.atomic(()=>{
     const b=this.store.get('evaluation',id);if(!b)throw Error('Unknown evaluation');if(b.status==='completed')return b.results;
@@ -66,10 +71,11 @@ export class Routing {
         case 'resume':receipt=this.control(e,a.taskId?{mode:'selected',startTaskIds:[a.taskId]}:{mode:'resume_all'},question);break;
         case 'status':{
           const tasks=a.taskId?[this.core.task(a.taskId)]:this.core.snapshot().tasks;
-          this.store.enqueue('reply','status:'+e.id,{eventId:e.id,taskId:a.taskId,text:(this.store.get('meta','control').paused?'调度已暂停。\n':'调度已开启。\n')+(tasks.map(t=>`${statusText(t)}\n${t.summary||'尚无执行结果'}${t.report?.next?'\n下一步：'+t.report.next:''}${t.output?'\n产物：'+t.output:''}`).join('\n\n')||'暂无任务')});break;
+          this.store.enqueue('reply','status:'+e.id,{eventId:e.id,taskId:a.taskId,taskRefs:tasks.map(t=>({id:t.id,title:t.title})),text:(this.store.get('meta','control').paused?'调度已暂停。\n':'调度已开启。\n')+(tasks.map(t=>`${statusText(t)}\n${t.summary||'尚无执行结果'}${t.report?.next?'\n下一步：'+t.report.next:''}${t.output?'\n产物：'+t.output:''}`).join('\n\n')||'暂无任务')});break;
         }
         case 'clarify':{
           if(!text(a.question)||text(a.question).length>1000)throw Error('Invalid clarification');
+          if(!a.options&&/(停止|取消|恢复|启动|\bstop\b|\bcancel\b|\bresume\b)/i.test(e.text+' '+a.question))throw Error('Control clarification requires structured options with concrete task plans');
           let options;
           if(a.options!==undefined){if(!Array.isArray(a.options)||!a.options.length||a.options.length>4)throw Error('Invalid control options');options=a.options.map(o=>{if(!text(o.label)||o.label.length>200)throw Error('Invalid option label');return {label:o.label,plan:this.core.validateControl(o.plan)};});}
           const global=options?.some(o=>o.plan.mode!=='selected'),targets=global?this.store.list('task').map(t=>t.id):options?[...new Set(options.flatMap(o=>[...o.plan.startTaskIds,...o.plan.stopTaskIds]))]:[];
