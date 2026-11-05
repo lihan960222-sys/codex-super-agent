@@ -37,35 +37,38 @@ export class Core {
   }
   canLaunch(id){const t=this.task(id);return !this.store.get('meta','control').paused&&!stopped(t)&&['queued','waiting'].includes(t.status);}
   validateControl(plan){
-    if(!plan||!['selected','pause_all','resume_all'].includes(plan.mode)||Object.keys(plan).some(k=>!['mode','startTaskIds','stopTaskIds','pauseTaskIds'].includes(k)))throw Error('Invalid control plan');
+    if(!plan||!['selected','pause_all','resume_all'].includes(plan.mode)||Object.keys(plan).some(k=>!['mode','startTaskIds','stopTaskIds','pauseTaskIds','otherTasks'].includes(k)))throw Error('Invalid control plan');
     const start=plan.startTaskIds??[],stop=plan.stopTaskIds??[],pause=plan.pauseTaskIds??[];
-    for(const ids of [start,stop,pause])if(!Array.isArray(ids)||ids.length>50||ids.some(id=>!validId(id))||new Set(ids).size!==ids.length)throw Error('Invalid control targets');
-    if(plan.mode==='selected'&&!start.length&&!stop.length&&!pause.length)throw Error('Empty control plan: omit no-change options; the host supplies Cancel. Use ignore to withdraw a pending request.');
-    if(plan.mode!=='selected'&&(start.length||stop.length||pause.length)||start.some(id=>stop.includes(id)||pause.includes(id))||stop.some(id=>pause.includes(id)))throw Error('Contradictory control plan: choose one state change per task or clarify the conflict.');
-    for(const id of [...start,...stop,...pause])this.task(id);
+    const other=plan.otherTasks;if(other&&(!['start','stop','pause'].includes(other.action)||Object.keys(other).some(k=>!['action','exceptTaskIds'].includes(k))||!other.exceptTaskIds?.length))throw Error('Invalid other-task selector');
+    for(const ids of [start,stop,pause,...other?[other.exceptTaskIds]:[]])if(!Array.isArray(ids)||ids.length>50||ids.some(id=>!validId(id))||new Set(ids).size!==ids.length)throw Error('Invalid control targets');
+    if(plan.mode==='selected'&&!start.length&&!stop.length&&!pause.length&&!other)throw Error('Empty control plan: omit no-change options; the host supplies Cancel. Use ignore to withdraw a pending request.');
+    if(plan.mode!=='selected'&&(start.length||stop.length||pause.length||other)||start.some(id=>stop.includes(id)||pause.includes(id))||stop.some(id=>pause.includes(id)))throw Error('Contradictory control plan: choose one state change per task or clarify the conflict.');
+    for(const id of [...start,...stop,...pause,...other?.exceptTaskIds||[]])this.task(id);
     for(const id of start)if(['completed','failed'].includes(this.task(id).status))throw Error('Finished task needs a new authorized followup, not resume');
     for(const id of stop)if(['completed','failed'].includes(this.task(id).status))throw Error('Finished task cannot be stopped; report its actual state');
     for(const id of pause)if(['completed','failed'].includes(this.task(id).status))throw Error('Finished task cannot be paused; report its actual state');
-    return {mode:plan.mode,startTaskIds:start,stopTaskIds:stop,...pause.length?{pauseTaskIds:pause}:{}};
+    return {mode:plan.mode,startTaskIds:start,stopTaskIds:stop,...pause.length?{pauseTaskIds:pause}:{},...other?{otherTasks:{action:other.action,exceptTaskIds:other.exceptTaskIds}}:{}};
   }
   applyControl(input){return this.store.atomic(()=>{
     const plan=this.validateControl(input),before=this.store.get('meta','control');let affected=[];
     if(plan.mode==='pause_all'){this.stop(null);affected=this.store.list('task').filter(t=>t.status==='paused').map(t=>t.id);}
     else if(plan.mode==='resume_all'){affected=this.store.list('task').filter(t=>!t.manualStop&&['paused','queued'].includes(t.status)).map(t=>t.id);this.resume(null);}
     else {
-      for(const id of plan.stopTaskIds)if(!this.task(id).manualStop)this.stop(id);
-      for(const id of plan.pauseTaskIds||[])this.pause(id);
-      if(plan.startTaskIds.length&&before.paused){
+      const selected={start:[...plan.startTaskIds],stop:[...plan.stopTaskIds],pause:[...plan.pauseTaskIds||[]]},other=plan.otherTasks;
+      if(other){const excluded=new Set([...other.exceptTaskIds,...selected.start,...selected.stop,...selected.pause]);for(const t of this.store.list('task'))if(!excluded.has(t.id)&&!t.manualStop&&!['completed','failed','stopped'].includes(t.status)&&(other.action!=='start'||['paused','queued'].includes(t.status)))selected[other.action].push(t.id);}
+      for(const id of selected.stop)if(!this.task(id).manualStop)this.stop(id);
+      for(const id of selected.pause)this.pause(id);
+      if(selected.start.length&&before.paused){
         // Unlock selected work without incidentally launching other tasks accepted while paused.
-        for(const t of this.store.list('task'))if(t.status==='queued'&&!plan.startTaskIds.includes(t.id)){this.store.put('task',t.id,{...t,status:'paused',generation:t.generation+1,updatedAt:now()});this.store.cancelEffect('launch',t.id);}
+        for(const t of this.store.list('task'))if(t.status==='queued'&&!selected.start.includes(t.id)){this.store.put('task',t.id,{...t,status:'paused',generation:t.generation+1,updatedAt:now()});this.store.cancelEffect('launch',t.id);}
         this.store.put('meta','control',{paused:false,epoch:before.epoch+1});
       }
-      for(const id of plan.startTaskIds){const t=this.task(id);
+      for(const id of selected.start){const t=this.task(id);
         if(['running','preparing','uncertain'].includes(t.status))continue;
         if(t.status==='queued'&&!t.manualStop)this.store.enqueue('launch',id,{taskId:id,generation:t.generation,epoch:this.store.get('meta','control').epoch});
         else this.resume(id);
       }
-      affected=[...plan.stopTaskIds,...plan.pauseTaskIds||[],...plan.startTaskIds];
+      affected=[...selected.stop,...selected.pause,...selected.start];
     }
     return {plan,...this.store.get('meta','control'),tasks:affected.map(id=>{const t=this.task(id),r=this.store.get('responsibility',t.responsibilityId);return {id,title:t.title,status:t.status,generation:t.generation,manualStop:t.manualStop,workerName:r?.displayName||r?.name,interruptPending:!!this.store.get('lease',id)&&['paused','stopped'].includes(t.status)};}),at:now()};
   });}

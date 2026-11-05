@@ -1,5 +1,11 @@
 # Changes
 
+## Whole-branch review corrections — 2026-11-05
+
+One fresh-context review of5c76129..4fcd210 found six important gaps despite59 passing focused checks. In one repair pass, route short reply-bound stops/corrections through Router, retain negation/status/trailing prohibitions in stopped-task authority, refresh/fence every control-receipt task, preserve source document metadata through textual confirmation, apply explicit word bans/allowances chronologically, and add atomic server-resolved other-task selectors beyond50 targets. Large receipts use bounded focus/count/state facts while retaining group identity locally; stale membership confirmations remain fenced.
+
+Nine new deterministic regressions, including corrected actual-byte document staging and explicit rollback RED evidence; full269/269 Windows checks pass. Add isolated native preference-revocation and100-task-control probes for frozen final verification. No additional development round, model changes, new dependencies or production deployment. See docs/validation/review.md.
+
 ## Conversation validation repair 3 — 2026-11-05
 
 After all185 main cases and the actual30min soak finished, fix the seven observed Router failure roots: expose fresh adjustment state/targets; distinguish identity from resume authority; preserve reply-bound partial-export changes and progress-only queries; clarify unbound media intent; reject unnecessary confirmation for explicit cancellation with retained records; return bounded exact already-read ID hints for a mistyped UUID without fuzzy execution. Keep semantic decisions in the Router and ask it to correct rejected actions in-turn. Refresh Router protocol7 while retaining Worker sessions and permissions.

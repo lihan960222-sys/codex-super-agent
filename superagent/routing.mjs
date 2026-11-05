@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 const messageKey=(chat,message)=>JSON.stringify([String(chat),String(message)]);
 const text=value=>String(value||'').trim();
 export const requestsNewTask=value=>/(新建|另开|另建|另外(?:做|建)|另做|独立(?:任务|项目|会话)|\bnew (?:task|project|session)\b|\banother\b)/i.test(value);
-const needsSemantic=value=>requestsNewTask(value)||/(暂停|暫停|停止|停下|停一下|停掉|取消|恢复|恢復|先放|先不做|别动|不执行|等.{0,30}再|发错|切换|权限|模型|设置|文风|语气|全局偏好|以后.{0,15}(回复|回答|简短)|\b(?:stop|pause|cancel|resume|switch)\b)/i.test(value);
+const needsSemantic=value=>requestsNewTask(value)||/(停|暫停|取消|恢复|恢復|先放|先不做|别动|不执行|等.{0,30}再|发错|切换|不是[\s\S]{0,120}(?:而是|是)|改投|转给|换到|换成|说的是|其实是|权限|模型|设置|文风|语气|全局偏好|以后.{0,15}(回复|回答|简短)|\b(?:stop|pause|cancel|resume|switch)\b)/i.test(value);
 const stamp=()=>new Date().toISOString();
 const actionClaim=/(?:已(?:经)?|现已|成功|这就|马上|立即|现在就).{0,12}(?:启动|恢复|停止|暂停|开始(?:执行|运行|任务)|更改|修改设置)|(?:明白|好的|好)[，,：:\s]*(?:开始|启动|恢复|停止)|\b(?:I(?:'ve| have)?|we(?:'ve| have)?)\s+(?:started|resumed|stopped|paused|enabled)\b/i;
 const statusText=t=>`${t.title}：${({queued:'已排队，尚未开始执行',paused:'已暂停',stopped:'已停止，保留记录',running:'执行中',preparing:'准备中',uncertain:'正在核对执行状态',waiting:'等待中'})[t.status]||t.status}`;
@@ -25,7 +25,8 @@ export class Routing {
         if(['completed','failed'].includes(task.status)){this.store.put('event',event.id,{...event,status:'candidate',relatedTaskIds:targets});return {kind:'candidate'};}
         this.control(event,{mode:'selected',stopTaskIds:[task.id]});this.store.put('event',event.id,{...event,status:'control'});return {kind:'stopped',taskId:task.id};
       }
-      if(!needsSemantic(event.text)&&!task.manualStop&&task.status!=='paused'&&!this.store.get('meta','control').paused&&!event.questionId&&!event.handedBack?.includes(task.id)){
+      const mentionsOther=this.store.list('task').some(t=>t.id!==task.id&&event.text.toLowerCase().includes(t.title.toLowerCase()));
+      if(!needsSemantic(event.text)&&!mentionsOther&&!task.manualStop&&task.status!=='paused'&&!this.store.get('meta','control').paused&&!event.questionId&&!event.handedBack?.includes(task.id)){
         this.core.attach(event.id,task.id);this.bind(event.chatId,event.messageId,task.id);this.dispatchNotice(event,task);return {kind:'direct',taskId:task.id};
       }
     }
@@ -58,10 +59,10 @@ export class Routing {
     if(!Array.isArray(taskInputs)||taskInputs.length>50)throw Error('Invalid scoped task instructions');
     const sources=[event,original].filter(Boolean),starting=validated.mode==='resume_all'?this.store.list('task').filter(t=>!t.manualStop&&['paused','queued'].includes(t.status)).map(t=>t.id):validated.startTaskIds;for(const input of taskInputs)if(!starting.includes(input.taskId)||typeof input.text!=='string'||!input.text.trim()||input.text.length>4000||!sources.some(e=>e.text.includes(input.text)))throw Error('Task instructions must quote the owner request and target a selected start');
     const receipt=this.core.applyControl(validated);this.store.put('control-receipt',event.id,{eventId:event.id,...receipt});
-    for(const [index,input]of taskInputs.entries()){const scoped={...event,id:'control-work:'+event.id+':'+input.taskId+':'+index,ownerEventId:original?.id||event.id,text:input.text,media:original?.media||event.media||[]};this.core.receive(scoped);const inputId=this.core.addInput(scoped,input.taskId);this.store.enqueue('delivery',inputId,{taskId:input.taskId,inputId,generation:this.core.task(input.taskId).generation});this.bind(event.chatId,event.messageId,input.taskId);}
-    this.store.enqueue('reply','control:'+event.id,{eventId:event.id,controlTasks:receipt.tasks,text:(receipt.paused?'调度已暂停。':'调度已开启。')+'\n'+receipt.tasks.map(statusText).join('\n')});return receipt;
+    for(const [index,input]of taskInputs.entries()){const owner=sources.find(e=>e.text.includes(input.text)),scoped={...event,id:'control-work:'+event.id+':'+input.taskId+':'+index,ownerEventId:owner.ownerEventId||owner.id,text:input.text,media:owner.media||[],files:owner.files||[]};this.core.receive(scoped);const inputId=this.core.addInput(scoped,input.taskId);this.store.enqueue('delivery',inputId,{taskId:input.taskId,inputId,generation:this.core.task(input.taskId).generation});this.bind(event.chatId,event.messageId,input.taskId);}
+    this.store.enqueue('reply','control:'+event.id,{eventId:event.id,controlTasks:receipt.tasks,controlPlan:receipt.plan,text:(receipt.paused?'调度已暂停。':'调度已开启。')+'\n'+receipt.tasks.map(statusText).join('\n')});return receipt;
   }
-  controlCard(question){const descriptions=question.options.map((o,index)=>{const p=o.plan,lines=[];if(p.mode!=='selected')lines.push(p.mode==='pause_all'?'全局调度及未完成任务 → 暂停':'全局调度及可恢复任务 → 继续（单独停止的任务保持停止）');else for(const [ids,verb]of [[p.pauseTaskIds||[],'暂停'],[p.stopTaskIds,'停止'],[p.startTaskIds,'继续']])for(const id of ids)lines.push(this.core.task(id).title+' → '+verb);return (question.options.length>1?(index+1)+'、':'')+lines.join('；');});
+  controlCard(question){const descriptions=question.options.map((o,index)=>{const p=o.plan,lines=[];if(p.mode!=='selected')lines.push(p.mode==='pause_all'?'全局调度及未完成任务 → 暂停':'全局调度及可恢复任务 → 继续（单独停止的任务保持停止）');else {if(p.otherTasks)lines.push('除 '+p.otherTasks.exceptTaskIds.map(id=>this.core.task(id).title).join('、')+' 外的其他未完成任务 → '+({pause:'暂停',stop:'停止',start:'继续（人工停止的任务保持停止）'}[p.otherTasks.action]));for(const [ids,verb]of [[p.pauseTaskIds||[],'暂停'],[p.stopTaskIds,'停止'],[p.startTaskIds,'继续']])for(const id of ids)lines.push(this.core.task(id).title+' → '+verb);}return (question.options.length>1?(index+1)+'、':'')+lines.join('；');});
     const button=(text,action,index)=>{const id=randomUUID();this.store.put('control-button',id,{id,questionId:question.id,action,index,createdAt:Date.now()});return {text,callback_data:'cq:'+id};};
     return {text:question.text+'\n\n'+descriptions.join('\n'),replyMarkup:{inline_keyboard:[...question.options.map((o,index)=>[button(question.options.length===1?'确认':'确认 '+(index+1),'confirm',index)]),[button('调整','adjust'),button('取消','cancel')]]}};
   }
@@ -79,7 +80,7 @@ export class Routing {
     if(!Array.isArray(actions)||actions.length>50||actions.some(a=>!b.events.includes(a.eventId))||b.events.some(id=>{const group=actions.filter(a=>a.eventId===id);return !group.length||group.length>1&&group.some(a=>a.kind!=='create');}))throw Error('Decide each original event exactly once; only independent creates may share an event');
     const results=[],parts=new Map();
     for(const a of actions){const e=this.store.get('event',a.eventId);let task,receipt;
-      const controlled=a.kind==='control'?[...a.plan?.startTaskIds||[],...a.plan?.stopTaskIds||[],...a.plan?.pauseTaskIds||[]]:['stop','resume'].includes(a.kind)&&a.taskId?[a.taskId]:[],adjustments=controlled.length?this.store.list('question','pending').filter(q=>q.adjusting&&String(q.chatId)===String(e.chatId)&&controlled.every(id=>q.taskIds?.includes(id))):[];
+      const controlled=a.kind==='control'?[...a.plan?.startTaskIds||[],...a.plan?.stopTaskIds||[],...a.plan?.pauseTaskIds||[],...a.plan?.otherTasks?.exceptTaskIds||[]]:['stop','resume'].includes(a.kind)&&a.taskId?[a.taskId]:[],adjustments=controlled.length?this.store.list('question','pending').filter(q=>q.adjusting&&String(q.chatId)===String(e.chatId)&&controlled.every(id=>q.taskIds?.includes(id))):[];
       const questionId=a.questionId||e.questionId||(adjustments.length===1?adjustments[0].id:null),boundQuestion=questionId&&this.store.get('question',questionId),question=boundQuestion?.status==='pending'?boundQuestion:null;
       if(questionId&&(!boundQuestion||boundQuestion.kind==='native'))throw Error('Unknown routing question');
       if((e.closedQuestionId||boundQuestion&&boundQuestion.status!=='pending')&&!['status','answer','ignore','clarify'].includes(a.kind))throw Error('Closed question cannot authorize another action; show status or ask a fresh clarification');
@@ -100,7 +101,7 @@ export class Routing {
           if(!a.options&&/(暂停|停止|取消|恢复|启动|\bstop\b|\bcancel\b|\bresume\b)/i.test(e.text+' '+a.question))throw Error('Control clarification requires structured options with concrete task plans');
           let options;
           if(a.options!==undefined){if(!Array.isArray(a.options)||!a.options.length||a.options.length>4)throw Error('Invalid control options');options=a.options.map(o=>{if(!text(o.label)||o.label.length>200)throw Error('Invalid option label');return {label:o.label,plan:this.core.validateControl(o.plan),...o.taskInputs?{taskInputs:o.taskInputs}:{}};});}
-          const global=options?.some(o=>o.plan.mode!=='selected'),targets=global?this.store.list('task').map(t=>t.id):options?[...new Set(options.flatMap(o=>[...o.plan.startTaskIds,...o.plan.stopTaskIds,...o.plan.pauseTaskIds||[]]))]:[];
+          const global=options?.some(o=>o.plan.mode!=='selected'||o.plan.otherTasks),targets=global?this.store.list('task').map(t=>t.id):options?[...new Set(options.flatMap(o=>[...o.plan.startTaskIds,...o.plan.stopTaskIds,...o.plan.pauseTaskIds||[]]))]:[];
           const saved={id:e.id,eventId:e.id,rootEventId:question?.rootEventId||question?.eventId||e.id,chatId:e.chatId,createdAt:Date.now(),text:a.question,status:'pending',taskIds:e.relatedTaskIds||[],kind:options?'control':'routing',originalText:question?.originalText||this.store.get('event',question?.eventId||'')?.text||e.text,...options?{options,controlEpoch:this.store.get('meta','control').epoch,...global?{taskCount:targets.length}:{},generations:Object.fromEntries(targets.map(id=>[id,this.core.task(id).generation]))}:{}};this.store.put('question',e.id,saved);const card=options?this.controlCard(saved):{text:a.question};this.store.enqueue('reply','question:'+e.id,{eventId:e.id,questionId:e.id,...card,question:card.text,routerWritten:true});break;
         }
         case 'ignore':if(!text(a.reason))throw Error('Ignore requires reason');break;

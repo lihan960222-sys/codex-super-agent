@@ -17,6 +17,7 @@ export class Preferences {
   // ponytail: enforce only explicit, mechanically testable rules; personality stays in the stable prompt.
   const detailed=/(这次|本次|现在|此次).{0,15}(详细|展开|长文)|请详细展开/.test(eventText),cancel=source.lastIndexOf('取消字数限制');const limits=[...source.matchAll(/(?:每次|每条)(?:回复|回答)(?:都)?(?:最多|不超过|不得超过)\s*(\d{1,5})\s*(字|字符|句)/g)].filter(m=>m.index>cancel);
   if(!detailed)for(const unit of ['字','字符','句']){const match=limits.filter(m=>m[2]===unit).at(-1);if(!match)continue;const n=Number(match[1]),length=unit==='句'?body.split(/[。！？!?]+/u).filter(s=>s.trim()).length:[...body].length;if(n>0&&length>n)errors.push('回复'+unit+'数不得超过'+n);}
-  for(const m of source.matchAll(/(?:禁用词|禁止使用|不要使用)[：:\s]*[「“"]([^」”"\r\n]{1,80})[」”"]/g))if(body.includes(m[1]))errors.push('不得使用：'+m[1]);return errors;
+  const words=new Map();for(const m of source.matchAll(/(禁用词|禁止使用|不要使用|允许使用|可以使用|取消禁用词)[：:\s]*[「“"]([^」”"\r\n]{1,80})[」”"]/g))words.set(m[2],!['允许使用','可以使用','取消禁用词'].includes(m[1]));
+  for(const [word,banned]of words)if(banned&&body.includes(word))errors.push('不得使用：'+word);return errors;
  }
 }
