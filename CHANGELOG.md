@@ -1,5 +1,11 @@
 # Changes
 
+## Validation plan — 2026-11-05
+
+Document a three-round, conversation-driven validation process with 120 synthetic scenarios, 24 critical cases repeated three times per round, and five multi-turn stories. Each round freezes the code until its full test results are collected, then groups minimal fixes before the next round; final verification follows the third repair batch. Distinguish simulated transport, native Router inference, real Worker execution and actual Telegram delivery.
+
+Documentation only. Scenario IDs/counts were checked; no new scenario runs, runtime changes or deployment occurred in this planning step. See `docs/superpowers/plans/2026-11-05-conversation-validation.md`.
+
 ## Deployment correction — 2026-11-05
 
 Allow an explicit Git executable path when the elevated Windows session has a different PATH. The first deployment attempt stopped before any service or production file changed because Git was unavailable in that session.
