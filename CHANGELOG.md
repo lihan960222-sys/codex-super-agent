@@ -1,5 +1,11 @@
 # Changes
 
+## Conversation validation repair 3 — 2026-11-05
+
+After all185 main cases and the actual30min soak finished, fix the seven observed Router failure roots: expose fresh adjustment state/targets; distinguish identity from resume authority; preserve reply-bound partial-export changes and progress-only queries; clarify unbound media intent; reject unnecessary confirmation for explicit cancellation with retained records; return bounded exact already-read ID hints for a mistyped UUID without fuzzy execution. Keep semantic decisions in the Router and ask it to correct rejected actions in-turn. Refresh Router protocol7 while retaining Worker sessions and permissions.
+
+Seven new regressions observed RED-to-GREEN, one positive authority/neighbor test and protocol-only rotation RED-to-GREEN; full260/260 Windows checks pass. Round3 main179/185pass, native extras4/5pass; the full1800128ms soak fails cancellation retention despite heartbeat, idle polling and same-file continuation passing. Fix3 native effectiveness is not yet claimed: final173 + cumulative failed expressions/cards + a fresh30min soak remain. Production unchanged.
+
 ## Round 3 main collection and offline timing — 2026-11-05
 
 Resume the user-paused run on the identical product/catalog hash, preserve completed evidence and retry interrupted fixtures in new directories. All 185 main executions collected: 179 pass / 6 fail / 0 blocked. All 18 real Worker/file cases pass; native coordination failures remain. Recovery12, seeded200 states/input retention, scale20/100/500 and actual33-decision rotation pass; adjustment-card native supplement fails; the fresh continuous30min soak is still running. No product fix or deployment before the entire round ends.
