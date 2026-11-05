@@ -4,7 +4,7 @@
 
 Add synthetic recovery timelines, native cache/card probes, 20/100/500-task recall and actual 33-decision rotation probes, seeded state transitions, and a real-clock 30-minute soak script for subsequent rounds. The soak and scale probes are prepared, not yet executed at this commit. Correct the evidence oracle so a sibling task's running clause does not falsely indict a paused task; retain original native results and separate any regrading.
 
-Verification: 233/233 automated Windows checks and all 12 synthetic recovery helper checks passed. Product code remains frozen at repair 1 while its native replay continues. Simulated Telegram response loss may duplicate an unacknowledged message; checks prove acknowledged parts are checkpointed and tasks are not re-executed, not exactly-once Telegram delivery.
+Verification: 234/234 automated Windows checks and all 12 synthetic recovery helper checks passed. Added a tested metrics summary that separates native and deterministic results, recovered tool errors, available usage snapshots and scenario latency. Product code remains frozen at repair 1 while its native replay continues. Simulated Telegram response loss may duplicate an unacknowledged message; checks prove acknowledged parts are checkpointed and tasks are not re-executed, not exactly-once Telegram delivery.
 
 ## Conversation validation repair 1 — 2026-11-05
 
