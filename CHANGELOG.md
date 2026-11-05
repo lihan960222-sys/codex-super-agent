@@ -1,5 +1,11 @@
 # Changes
 
+## Frozen final verification — 2026-11-05 — NOT ACCEPTED
+
+Frozen product8f64abe: all173main executions collected168pass/5fail/0blocked; critical repeats71/72. Cumulative phase-specific failures7executions4pass/3fail. Seven native cache/card/preference/bulk supplements, recovery12, seeded200, scale20/100/500 and actual33rotation pass. Actual1800170ms soak has healthy heartbeats/no idle model polling/restart/same-file continuation, but queued-task cancellation coverage is absent after D remained a clarification; retain its raw failing verdict.
+
+Remaining confirmed Router problems: unnecessary stop/pause/confirmation clarification despite explicit references, and reactivating completed work on bare continue. Q04's missing-topic clarification is a separately documented oracle dispute, not erased from5fails. No hidden fourth repair cycle, main merge or production deployment. Source and sanitized reports retained on the test branch; private data excluded. Cleanup checked224owned native sessions, none active (3verified unloaded), no inspection errors; no test Node processes remain. See docs/validation/final.md and decisions.md.
+
 ## Whole-branch review corrections — 2026-11-05
 
 One fresh-context review of5c76129..4fcd210 found six important gaps despite59 passing focused checks. In one repair pass, route short reply-bound stops/corrections through Router, retain negation/status/trailing prohibitions in stopped-task authority, refresh/fence every control-receipt task, preserve source document metadata through textual confirmation, apply explicit word bans/allowances chronologically, and add atomic server-resolved other-task selectors beyond50 targets. Large receipts use bounded focus/count/state facts while retaining group identity locally; stale membership confirmations remain fenced.
