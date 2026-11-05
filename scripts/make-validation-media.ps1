@@ -7,10 +7,12 @@ $bitmap=New-Object System.Drawing.Bitmap 640,320
 $graphics=[System.Drawing.Graphics]::FromImage($bitmap)
 $font=New-Object System.Drawing.Font 'Arial',28
 try {
-  $graphics.Clear([System.Drawing.Color]::White)
-  $graphics.DrawRectangle([System.Drawing.Pens]::Blue,30,30,550,200)
-  $graphics.DrawString('BLUE-427',$font,[System.Drawing.Brushes]::Blue,80,100)
-  $bitmap.Save((Join-Path $assetRoot 'image.png'))
+  foreach($item in @(@{name='image.png';text='BLUE-427'},@{name='image-second.png';text='BLUE-428'})){
+    $graphics.Clear([System.Drawing.Color]::White)
+    $graphics.DrawRectangle([System.Drawing.Pens]::Blue,30,30,550,200)
+    $graphics.DrawString($item.text,$font,[System.Drawing.Brushes]::Blue,80,100)
+    $bitmap.Save((Join-Path $assetRoot $item.name))
+  }
 } finally { $font.Dispose(); $graphics.Dispose(); $bitmap.Dispose() }
 Add-Type -AssemblyName System.Speech
 $voice=New-Object System.Speech.Synthesis.SpeechSynthesizer

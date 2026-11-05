@@ -25,6 +25,7 @@ export function evaluateEvidence({transport,level,before,after,expected={},sent=
   if(expected.taskCount!==undefined)check('taskCount',Object.keys(after).length===expected.taskCount,Object.keys(after).length);
   if(expected.minNew!==undefined)check('newTasks',Object.keys(after).length-Object.keys(before).length>=expected.minNew,Object.keys(after).length-Object.keys(before).length);
   if(expected.fileContains)check('fileContent',artifacts.some(a=>a.text?.includes(expected.fileContains)),artifacts.map(a=>a.path));
+  if(expected.continueTask){const key=expected.continueTask,t=before[key];check('continuation-no-new-task',Object.keys(after).length===Object.keys(before).length,Object.keys(after).length);check('continuation-same-thread',!!t?.threadId&&after[key]?.threadId===t.threadId,after[key]?.threadId);check('continuation-actual-turn',calls.some(c=>c.native===true&&c.method==='turn/start'&&c.threadId===t?.threadId&&c.at>=(expected.followupAt||0)),calls.filter(c=>c.method==='turn/start'&&c.at>=(expected.followupAt||0)).map(c=>c.threadId));if(expected.fileContains)check('continuation-target-file',artifacts.some(a=>a.path.split(/[\\/]/).some(p=>p.startsWith(t.id+'_'))&&a.text?.includes(expected.fileContains)),t.id);}
   if(level==='E'&&expected.requireActualWorker!==false)check('actualWorkerTurn',calls.some(c=>c.role==='worker'&&c.method==='turn/start'&&c.native===true),calls.filter(c=>c.role==='worker'&&c.method==='turn/start').length);
   const text=sent.map(s=>s.text||'').join('\n');
   for(const t of Object.values(after))if(['queued','paused','stopped','preparing'].includes(t.status)&&t.title&&text.includes(t.title))check('truthfulStart:'+t.title,!new RegExp(t.title.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'.{0,16}(已经开始执行|已开始工作|正在执行)').test(text),t.status);
@@ -40,7 +41,7 @@ export class ValidationRPC extends EventEmitter {
   }
   async connect(){return this.client.connect();}
   async request(method,p={}){
-    const start=method==='thread/start',router=start?p.dynamicTools?.some(t=>t.name==='router_decide'):this.threads.get(p.threadId)?.role==='router';
+    const start=method==='thread/start',declaredWorker=!!p.developerInstructions,router=start?p.dynamicTools?.some(t=>t.name==='router_decide'):!declaredWorker&&this.threads.get(p.threadId)?.role==='router';
     const role=router?'router':p.threadId||start?'worker':'service';let mode;try{mode=JSON.parse(p.input?.[0]?.text||'{}').mode==='presentation'?'presentation':'routing';}catch{mode='routing';}
     const fake=role==='worker'&&!this.realWorkers;
     const call={method,role,...method==='turn/start'?{mode:role==='router'?mode:'execution'}:{},native:!fake,at:Date.now(),threadId:p.threadId,model:p.model,effort:p.effort};this.calls.push(call);this.record({kind:'request',call,params:p});
@@ -59,7 +60,7 @@ export class ValidationRPC extends EventEmitter {
       else throw Error('Unimplemented synthetic Worker boundary: '+method);
     }else r=await this.client.request(method,p);
     if(start)this.threads.set(r.thread.id,{role:router?'router':'worker',model:p.model});
-    if(method==='thread/resume'&&!this.threads.has(p.threadId))this.threads.set(p.threadId,{role:this.workers.has(p.threadId)?'worker':'router',model:p.model});
+    if(method==='thread/resume')this.threads.set(p.threadId,{role:declaredWorker||this.workers.has(p.threadId)?'worker':this.threads.get(p.threadId)?.role||'router',model:p.model});
     this.record({kind:'response',method,role,result:r});return r;
   }
   respond(id,result){if(this.requests.has(id)){this.requests.get(id)(result);this.requests.delete(id);}else this.client.respond(id,result);}
@@ -79,6 +80,7 @@ export async function openFixture({root,config,realWorkers,record,workers}){
   },onError:(e,key)=>{errors.push({message:e.message,key,at:Date.now()});record({kind:'runtime-error',message:e.message,key});}});
   if(system.settings.current.router.model!==baseline.router.model||system.settings.current.router.effort!==baseline.router.effort||system.settings.current.worker.model!==baseline.worker.model||system.settings.current.worker.effort!==baseline.worker.effort)system.settings.save({...baseline,maxWorkers:2},system.settings.current.revision);
   system.native.on('toolFailure',e=>record({kind:'tool-failure',...e}));
+  for(const t of system.store.list('task'))if(t.threadId)rpc.threads.set(t.threadId,{role:'worker',model:t.executionSettings?.model});
   // Captures the real validated upload bytes at the Telegram boundary; never sends to Telegram.
   const original=system.mediaFor;system.mediaFor=(id)=>{const m=original(id);m.uploader=async(method,chatId,bytes,name,caption)=>{const upload={method,name,sha256:sha(bytes),size:bytes.length,text:/\.(md|txt)$/i.test(name)?bytes.toString('utf8'):null};uploads.push(upload);record({kind:'upload',...upload});return {message_id:20000+uploads.length};};return m;};
   system.delivery.mediaFor=system.mediaFor;

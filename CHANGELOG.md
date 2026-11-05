@@ -31,6 +31,9 @@ Verification: 200 automated Windows tests passed. An isolated native `gpt-6-luna
 Imported the running `superagent-presentation-20261105-110644-26d7819d` source and its existing regression tests. No runtime state, credentials or personal conversations are included. Earlier development history is not reconstructed; this is the first auditable source snapshot.
 # Conversation validation in progress (2026-11-05)
 
+- Corrected validation-only defects found during the first round: continuation must execute on the original thread, interrupted fixture databases cannot be reused, resumed Worker telemetry retains its role, audio proof accepts actual nonempty transcription, and album fixtures contain two distinct images. Preserved original results and scheduled affected cases for replay; no production logic changed.
+- Harness verification after correction: 209 tests passed. Original H03 passes were regraded as failures because new sessions had edited the old files.
+
 - Added a frozen catalog of 120 synthetic conversations, 5 continuous stories and 12 new expressions per round; pinned Router gpt-6-luna/medium and Worker gpt-6.1-sol/medium.
 - Added isolated Runtime replay, actual model/RPC evidence, file hashes, captured Telegram uploads, bounded cases and deterministic fault checks. No second production Telegram receiver is started.
 - Baseline: existing 200 tests passed on Windows. Harness: 7 checks passed; 4 isolated native smoke cases passed, including an actual Worker file write. These are not full-round or phone transport acceptance.

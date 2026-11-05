@@ -27,9 +27,9 @@ const faultChecks={
 function runFaultTest(name,root){const entry=faultChecks[name];if(!entry)throw Error('Unimplemented fault check '+name);const output=execFileSync(process.execPath,['--test','--test-reporter=tap','--test-name-pattern='+entry[1],entry[0]],{encoding:'utf8',windowsHide:true,timeout:60000,maxBuffer:300000});fs.writeFileSync(path.join(root,'fault.tap'),output);return {name,pass:/# pass [1-9]/.test(output)&&/# fail 0/.test(output),outputHash:sha(output)};}
 export async function runCase(definition,options){
   const {round,runId,sourceCommit,config,out,attempt=1}=options,c=definition;
-  const root=assertTestRoot(path.join(out,c.id+'-'+attempt),base);fs.mkdirSync(root,{recursive:true});
+  let root=assertTestRoot(path.join(out,c.id+'-'+attempt),base);if(fs.existsSync(path.join(root,'superagent-state','state.sqlite')))root=assertTestRoot(root+'-retry-'+Date.now(),base);fs.mkdirSync(root,{recursive:true});
   const result={caseId:c.id,attempt,level:c.level,transport:'simulated-telegram',round,runId,sourceCommit,models:baseline,status:'not-run',startedAt:new Date().toISOString(),assertions:[],tokenUsage:null};
-  const events=[];const record=e=>events.push(redact({at:Date.now(),...e},[config.expectedEmail]));
+  const events=[];const record=e=>{const entry=redact({at:Date.now(),...e},[config.expectedEmail]);events.push(entry);fs.appendFileSync(path.join(root,'events.jsonl'),JSON.stringify(entry)+'\n');};
   let f,aliases={},before={},startThreads={},stepResults=[],counter=0,lastBoundary=0;
   const fixtureCalls=[],fixtureSent=[];
   const deadline=Date.now()+(c.level==='E'?600000:300000);
@@ -61,7 +61,7 @@ export async function runCase(definition,options){
       if(status==='running'){await s.executor.start(t.id);}
       s.store.cancelEffect('launch',t.id);
     }
-    let current=s.core.task(t.id);if(status==='stopped'){s.core.stop(t.id);current=s.core.task(t.id);}else if(status!=='running')s.store.put('task',t.id,{...current,status,manualStop:false,summary:status==='waiting'?'已写材料信息，等待测量数据':status==='failed'?'未能生成产物，工具执行失败':'已写记录，待补试验条件',report:{state:status==='waiting'?'waiting':'ready',summary:'已写材料信息',next:'补试验条件',question:status==='waiting'?'材料牌号和板厚分别是多少？':undefined}});
+    let current=s.core.task(t.id);if(status==='stopped'){if(real&&current.status==='completed')s.store.put('task',t.id,{...current,status:'waiting',summary:'第一阶段文件已保存，后续条件待补充'});s.core.stop(t.id);current=s.core.task(t.id);}else if(status!=='running')s.store.put('task',t.id,{...current,status,manualStop:false,summary:status==='waiting'?'已写材料信息，等待测量数据':status==='failed'?'未能生成产物，工具执行失败':'已写记录，待补试验条件',report:{state:status==='waiting'?'waiting':'ready',summary:'已写材料信息',next:'补试验条件',question:status==='waiting'?'材料牌号和板厚分别是多少？':undefined}});
     if(status==='queued')s.store.enqueue('launch',t.id,{taskId:t.id});
     return s.core.task(t.id);
   };
@@ -86,6 +86,7 @@ export async function runCase(definition,options){
       if(fixture==='resourceWait'){await s().executor.start(aliases.A);}
       if(c.id==='H02'){fs.writeFileSync(path.join(get('A').directories.output,'private.txt'),'TASK-A-PRIVATE-579');}
       before=taskSnapshot(s(),aliases);startThreads=Object.fromEntries(Object.entries(aliases).map(([k,id])=>[k,s().core.task(id).threadId]));
+      result.initialSettingsHash=sha(JSON.stringify(s().settings.current));
       const baselineCalls=f.rpc.calls.length;lastBoundary=f.sent.length;
       for(let index=0;index<c.steps.length;index++){
         const step=c.steps[index],sentBefore=f.sent.length,callBefore=f.rpc.calls.length;let update;
@@ -111,7 +112,7 @@ export async function runCase(definition,options){
             if(fault==='knowledge-invalidated'){s().store.put('knowledge-use',item.id+':'+aliases.B,{id:item.id,taskId:aliases.B,revision:item.revision});fs.writeFileSync(file,'原证据无效，材料未确认。');s().knowledge.audit(item);}
           }
           else if(fault==='stale-presentation'){
-            const t=get('A');s().store.enqueue('reply','stale-test',{taskId:t.id,notice:'started',text:'Started synthetic task'});const original=s().delivery.compose;let once=false;s().delivery.compose=async(...args)=>{const r=await original(...args);if(r&&!once){once=true;const now=get('A');s().core.stop(null);s().store.put('task',now.id,{...s().core.task(now.id),status:'paused'});}return r;};
+            const t=get('A');s().store.enqueue('reply','stale-test',{taskId:t.id,notice:'started',dispatchKey:'dispatch:'+t.sourceEventId,text:'Started synthetic task'});const original=s().delivery.compose;let once=false;s().delivery.compose=async(...args)=>{const r=await original(...args);if(r&&!once){once=true;const now=get('A');s().core.stop(null);s().store.put('task',now.id,{...s().core.task(now.id),status:'paused'});}return r;};
           }
           else if(fault==='presentation-failure-recovery'){
             const original=s().delivery.compose;let once=false;s().delivery.compose=async(...args)=>{if(!once){once=true;throw Error('Injected presentation failure');}return original(...args);};await report('A','ready','RAW_WORKER_CANARY_701：编号 ALPHA-731 已保存。');
@@ -146,6 +147,7 @@ export async function runCase(definition,options){
           if(step.mediaFixture)await prepareMediaFixture(update,step.mediaFixture,root,s());
           s().runtime.receive(update);if(step.replay)s().runtime.receive(update);
           record({kind:'input',step:index,update});
+          if(step.mediaFixture==='album'){const second=emit('');await prepareMediaFixture(second,'album-second',root,s());s().runtime.receive(second);record({kind:'input',step:index,update:second,albumPart:2});}
         }
         if(!step.batch)await drain({complete:!!c.waitCompleted});
         if(step.workerReport){const id=step.replyTask&&aliases[step.replyTask];if(id){const summary=step.workerReport.sendFixtureFile?step.workerReport.summary+'\n[[telegram_file:'+path.join(s().core.task(id).output,'record.md')+']]':step.workerReport.summary;await report(step.replyTask,step.workerReport.state,summary);await drain();}else check('controlled-worker-target',false);}
@@ -155,7 +157,7 @@ export async function runCase(definition,options){
       }
       await drain({complete:!!c.waitCompleted});
       result.before=before;result.after=taskSnapshot(s(),aliases);result.calls=[...fixtureCalls,...f.rpc.calls];result.sent=[...fixtureSent,...f.sent];result.steps=stepResults;result.artifacts=artifactSnapshot(path.join(root,'outputs'));result.uploads=f.uploads;
-      const evidence=evaluateEvidence({...result,expected:c.expected});checks.push(...evidence.assertions);
+      const expected={...c.expected,...c.check==='same-thread-A'?{continueTask:'A',followupAt:events.filter(e=>e.kind==='input').at(-1)?.at||Date.now()}:{}},evidence=evaluateEvidence({...result,expected});checks.push(...evidence.assertions);
       const routingCalls=f.rpc.calls.slice(baselineCalls).filter(x=>x.role==='router'&&x.mode==='routing'&&x.method==='turn/start');
       const latest=stepResults.filter(x=>x.eventId).at(-1);const lastInputs=latest?s().store.list('input').filter(i=>i.eventId===latest.eventId):[];
       switch(c.check){
@@ -197,7 +199,7 @@ export async function runCase(definition,options){
        case 'upload-md':check('upload-md',f.uploads.some(u=>u.method==='sendDocument'&&u.name.endsWith('.md')&&u.text?.includes('DELIVERY-862')));break;
        case 'upload-pdf-photo':check('upload-pdf',f.uploads.some(u=>u.name.endsWith('.pdf')&&u.size>50));check('upload-photo',f.uploads.some(u=>u.method==='sendPhoto'));break;
        case 'correct-file-B':check('steel-file-uploaded',f.uploads.some(u=>u.name==='steel.md'&&u.text==='STEEL-852'));break;
-       case 'real-transcription':check('transcript-present',s().store.list('event').some(e=>/暂停|Pause/i.test(e.text)&&e.message?.voice));break;
+       case 'real-transcription':check('transcript-present',result.artifacts.some(a=>a.path.endsWith('transcript.txt')&&a.text?.trim())&&s().store.list('event').some(e=>e.message?.voice&&e.status!=='media-pending'));break;
        case 'media-bounded-failure':check('media-explicit-error',f.sent.some(m=>/附件|失败|过大/.test(m.text||'')));check('no-infinite-media-retry',!s().store.list('event','media-pending').length);break;
        case 'noise-clarification':check('no-execution',get('A').status==='running'&&get('B').status==='running');check('audio-uncertainty',f.sent.some(m=>/听|识别|清楚|不确定/.test(m.text||'')));break;
        case 'album-order':check('two-media-preserved',s().store.list('event').filter(e=>e.message?.media_group_id).length===2);break;
@@ -241,14 +243,14 @@ const mediaFiles=new Map();const actualFetch=globalThis.fetch;
 globalThis.fetch=(url,...args)=>{if(String(url).startsWith('https://api.telegram.org/file/bot0:test/')){const key=String(url).split('/bot0:test/')[1];if(!mediaFiles.has(key))return Promise.resolve(new Response('',{status:404}));return Promise.resolve(new Response(mediaFiles.get(key)));}return actualFetch(url,...args);};
 async function prepareMediaFixture(update,kind,root,system){
   const assets=path.join(base,'assets');let bytes,ext;
-  if(['image','album'].includes(kind)){bytes=fs.readFileSync(path.join(assets,'image.png'));ext='png';}
+  if(['image','album','album-second'].includes(kind)){bytes=fs.readFileSync(path.join(assets,kind==='album-second'?'image-second.png':'image.png'));ext='png';}
   else if(kind==='voice'||kind==='voice-create'){bytes=fs.readFileSync(path.join(assets,kind==='voice'?'voice.wav':'voice-create.wav'));ext='wav';}
   else if(kind==='noise'){bytes=Buffer.alloc(16044);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(1,22);bytes.writeUInt32LE(16000,24);bytes.writeUInt32LE(32000,28);bytes.writeUInt16LE(2,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(bytes.length-44,40);ext='wav';}
   else if(kind==='pdf'){bytes=minimalPdf('PDF-296');ext='pdf';}
   else{bytes=Buffer.from(kind==='txt'?'TXT-853':'MD-624');ext=kind==='txt'?'txt':'md';}
   const id=path.basename(root)+'-'+update.update_id+'.'+ext;mediaFiles.set(id,bytes);
   const attachment={file_id:id,file_unique_id:id,file_size:kind==='oversize'?30*1024*1024:bytes.length};const m=update.message;m.caption=m.text;delete m.text;
-  if(['image','album'].includes(kind)){m.photo=[{...attachment,width:640,height:320}];if(kind==='album')m.media_group_id='synthetic-album-1';}
+  if(['image','album','album-second'].includes(kind)){m.photo=[{...attachment,width:640,height:320}];if(kind.startsWith('album'))m.media_group_id='synthetic-album-1';}
   else if(kind==='voice'||kind==='voice-create'||kind==='noise')m.voice={...attachment,duration:4,mime_type:'audio/wav'};
   else m.document={...attachment,file_name:kind==='traversal'?'../../unsafe;echo INJECTED.md':'fixture.'+ext,mime_type:ext==='pdf'?'application/pdf':'text/plain'};
 }
@@ -260,7 +262,8 @@ async function main(){const args=Object.fromEntries(process.argv.slice(2).reduce
  if(args.mode==='deterministic')list=list.filter(c=>c.level==='F');
  if(!args.smoke)list=[...list,...(catalog.stories||[]),...(args.round==='final'?[]:catalog.phrases?.[args.round]||[])];
  if(args.cases)list=list.filter(c=>args.cases.split(',').includes(c.id));
- const manifest={runId:path.basename(out),round:args.round,sourceCommit,node:process.version,caseHash:sha(fs.readFileSync('superagent/conversation-cases.json')),models:baseline,transport:'simulated-telegram',startedAt:new Date().toISOString(),count:list.length};fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2));
+ const codeFiles=['core','router','routing','runtime','native','system','executor','delivery','controls','approvals','settings','scheduler','knowledge','files','supervision'].map(n=>'superagent/'+n+'.mjs').concat(['telegram-bridge/media.mjs','telegram-bridge/client.mjs']);
+ const manifest={runId:path.basename(out),round:args.round,sourceCommit,node:process.version,codexVersion:fs.existsSync(path.join(base,'installed-tools.json'))?JSON.parse(fs.readFileSync(path.join(base,'installed-tools.json'))).cliVersion:null,caseHash:sha(fs.readFileSync('superagent/conversation-cases.json')),productHash:sha(JSON.stringify(codeFiles.map(f=>[f,sha(fs.readFileSync(f))]))),mediaHashes:fs.existsSync(path.join(base,'assets'))?Object.fromEntries(fs.readdirSync(path.join(base,'assets')).map(n=>[n,sha(fs.readFileSync(path.join(base,'assets',n)))])):null,models:baseline,transport:'simulated-telegram',startedAt:new Date().toISOString(),count:list.length};fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2));
  const existing=fs.existsSync(path.join(out,'cases.jsonl'))?fs.readFileSync(path.join(out,'cases.jsonl'),'utf8').trim().split('\n').filter(Boolean).map(s=>JSON.parse(s)):[];
  const jobs=list.flatMap(c=>Array.from({length:args.smoke?1:c.repetitions},(_,i)=>({c,attempt:i+1}))).filter(j=>!existing.some(r=>r.caseId===j.c.id&&r.attempt===j.attempt));
  const results=[...existing];let next=0;
