@@ -1,5 +1,9 @@
 # Changes
 
+## Deployment correction — 2026-11-05
+
+Allow an explicit Git executable path when the elevated Windows session has a different PATH. The first deployment attempt stopped before any service or production file changed because Git was unavailable in that session.
+
 ## 0.1.1 — 2026-11-05
 
 Fix cancellation of paused/queued tasks selecting another task or silently doing nothing:

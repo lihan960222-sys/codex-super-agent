@@ -1,10 +1,10 @@
-param([Parameter(Mandatory=$true)][string]$Runtime)
+param([Parameter(Mandatory=$true)][string]$Runtime,[string]$Git='git')
 $ErrorActionPreference='Stop'
 $Runtime=[IO.Path]::GetFullPath($Runtime)
 $repo=Split-Path $PSScriptRoot
-$commit=& git -c safe.directory=$repo -C $repo rev-parse HEAD
+$commit=& $Git -c safe.directory=$repo -C $repo rev-parse HEAD
 if($LASTEXITCODE -ne 0){throw 'Cannot identify source commit'}
-$dirty=& git -c safe.directory=$repo -C $repo status --porcelain
+$dirty=& $Git -c safe.directory=$repo -C $repo status --porcelain
 if($LASTEXITCODE -ne 0 -or $dirty){throw 'Deploy only a clean committed source tree'}
 $releasePath=Join-Path $Runtime 'superagent-release.json'
 $previous=Get-Content -LiteralPath $releasePath -Raw -Encoding UTF8|ConvertFrom-Json
@@ -29,7 +29,7 @@ New-Item -ItemType Directory -Path $newRoot,$backup|Out-Null
 foreach($area in @('superagent','telegram-bridge')){
  $target=Join-Path $newRoot $area
  New-Item -ItemType Directory -Path $target|Out-Null
- $files=& git -c safe.directory=$repo -C $repo ls-files -- $area
+ $files=& $Git -c safe.directory=$repo -C $repo ls-files -- $area
  if($LASTEXITCODE -ne 0){throw 'Cannot list tracked source files'}
  foreach($relative in $files){
   if($relative -match '\.test\.mjs$' -or $relative -match '/probe[^/]*\.mjs$'){continue}
