@@ -1,5 +1,11 @@
 # Changes
 
+## Validation supplements — 2026-11-05
+
+Add synthetic recovery timelines, native cache/card probes, 20/100/500-task recall and actual 33-decision rotation probes, seeded state transitions, and a real-clock 30-minute soak script for subsequent rounds. The soak and scale probes are prepared, not yet executed at this commit. Correct the evidence oracle so a sibling task's running clause does not falsely indict a paused task; retain original native results and separate any regrading.
+
+Verification: 233/233 automated Windows checks and all 12 synthetic recovery helper checks passed. Product code remains frozen at repair 1 while its native replay continues. Simulated Telegram response loss may duplicate an unacknowledged message; checks prove acknowledged parts are checkpointed and tasks are not re-executed, not exactly-once Telegram delivery.
+
 ## Conversation validation repair 1 — 2026-11-05
 
 After the complete first round (125 pass / 60 fail / 0 blocked across 185 accepted results), fix the reproduced routing/control/continuation failures in one batch: independent multi-create, selected atomic pause/start/stop, scoped resume requirements, concrete short names, semantic handling of bound controls/new tasks, missing Router rollout recovery, queue/wait facts, terminal media/command errors, reply-bound approvals, and send-time state recheck. Ambiguous control uses canonical task/action cards with one-use Confirm/Adjust/Cancel and version guards.

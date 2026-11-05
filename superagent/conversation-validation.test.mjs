@@ -17,6 +17,7 @@ test('queued task cannot pass when notification claims it started',()=>{
   const result=evaluateEvidence({transport:'simulated-telegram',level:'N',before:{},after:{A:{status:'queued',title:'铝板'}},expected:{states:{A:['queued']}},sent:[{text:'铝板已经开始执行'}],artifacts:[]});
   assert.equal(result.pass,false);
 });
+test('execution wording about a sibling task is not attributed to the paused task in the preceding clause',()=>{const result=evaluateEvidence({transport:'simulated-telegram',level:'N',before:{},after:{A:{status:'paused',title:'铝板试验'},B:{status:'running',title:'钢板报告'}},sent:[{text:'铝板试验已暂停，钢板报告正在执行。'}]});assert.equal(result.pass,true);});
 test('completion requires actual output and native evidence at E level',()=>{
   assert.equal(evaluateEvidence({transport:'simulated-telegram',level:'E',before:{},after:{A:{status:'completed'}},expected:{fileContains:'SYNTHETIC-42'},sent:[],artifacts:[]}).pass,false);
 });
