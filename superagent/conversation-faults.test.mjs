@@ -1,5 +1,13 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import http from 'node:http';import {spawn} from 'node:child_process';import {fileURLToPath} from 'node:url';
+import {Store} from './store.mjs';import {Core} from './core.mjs';import {Routing} from './routing.mjs';import {Runtime} from './runtime.mjs';
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
+function intakeFixture(){const root=fs.mkdtempSync(path.join(os.tmpdir(),'validation-intake-')),store=new Store(path.join(root,'state.sqlite')),core=new Core(store),routing=new Routing(core),runtime=new Runtime({store,core,routing,config:{ownerId:'1',chatId:'1'}});return {store,core,routing,runtime};}
+test('duplicate update cannot create another task or launch after the first routing commit',()=>{
+ const f=intakeFixture(),update={update_id:1,message:{message_id:1,from:{id:1},chat:{id:1,type:'private'},text:'Synthetic report'}};f.runtime.receive(update);const b=f.routing.begin();f.routing.decide(b.id,[{eventId:'telegram:1',kind:'create',title:'Synthetic report',responsibility:'Synthetic',resources:['isolated']}]);assert.equal(f.runtime.receive(update),false);assert.equal(f.store.list('task').length,1);assert.equal(f.store.list('input').length,1);assert.equal(f.store.effects().filter(e=>e.kind==='launch').length,1);f.store.close();
+});
+test('outsider callback and group intake cannot change any task or approval',()=>{
+ const f=intakeFixture();f.runtime.receive({update_id:1,message:{message_id:1,from:{id:9},chat:{id:1,type:'private'},text:'Approve everything'}});f.runtime.receive({update_id:2,message:{message_id:2,from:{id:1},chat:{id:1,type:'group'},text:'Stop everything'}});f.runtime.receive({update_id:3,callback_query:{id:'forged',from:{id:9},message:{message_id:3,chat:{id:1,type:'private'}},data:'ap:missing:yes'}});for(const type of ['event','task','approval','callback'])assert.equal(f.store.list(type).length,0);assert.equal(f.core.snapshot().paused,false);f.store.close();
+});
 test('watchdog recovers a partial health JSON without restarting a healthy coordinator',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'validation-health-'));fs.mkdirSync(path.join(root,'superagent-state'));
  let requests=0;const server=http.createServer((_q,r)=>{requests++;r.setHeader('content-type','application/json');r.end(JSON.stringify({epoch:0,paused:false,tasks:[]}));});await new Promise(r=>server.listen(0,'127.0.0.1',r));

@@ -20,7 +20,7 @@ export class Controls {
   if(cmd==='/permissions')return this.say(e.id,'权限',[[this.button('自动',{kind:'permissions',mode:'auto_review'}),this.button('手动',{kind:'permissions',mode:'user'})]]);
   if(cmd==='/model')return this.say(e.id,'模型',[[this.button('Router',{kind:'role',role:'router'}),this.button('Worker',{kind:'role',role:'worker'})],[this.button('职责',{kind:'responsibilities'})]]);
   if(cmd==='/settings'){const s=this.settings.current;return this.say(e.id,`Router：${s.router.model} / ${s.router.effort}\nWorker：${s.worker.model} / ${s.worker.effort}\n权限：${s.approvalsReviewer==='auto_review'?'自动':'手动'}\n并发：${s.maxWorkers}`,[[this.button('模型',{kind:'roles'}),this.button('权限',{kind:'permissions-menu'})]]);}
-  if(cmd==='/status'){const snap=this.core.snapshot();return this.say(e.id,`${snap.paused?'调度已暂停':'电脑在线'}\n`+snap.tasks.slice(-15).map(t=>`${t.title}：${t.status}\n${t.summary||({paused:'已暂停',stopped:'已停止，保留记录',completed:'已完成',failed:'执行失败'}[t.status]||'等待执行')}`).join('\n\n'),undefined,{eventId:e.id,taskRefs:snap.tasks.slice(-15).map(t=>({id:t.id,title:t.title}))});}
+  if(cmd==='/status'){const snap=this.core.snapshot();return this.say(e.id,`${snap.paused?'调度已暂停':'电脑在线'}\n`+snap.tasks.slice(-15).map(t=>`${t.title}：${t.status}\n${t.summary||this.executionReason?.(t.id)||t.report?.question||({paused:'已暂停',stopped:'已停止，保留记录',completed:'已完成',failed:'执行失败'}[t.status]||'等待执行')}`).join('\n\n'),undefined,{eventId:e.id,taskRefs:snap.tasks.slice(-15).map(t=>({id:t.id,title:t.title}))});}
   return this.say(e.id,'直接描述任务即可。回复某条任务消息可继续该任务；“全部停止”暂停所有任务，“恢复全部任务”继续。模型和权限可在设置里调整。');
  }
  async callback(c){const cb=c.callback;if(!cb.data?.startsWith('sa:'))return this.say(c.id,'请重新打开设置。');const id=cb.data.slice(3),b=this.store.get('button',id);

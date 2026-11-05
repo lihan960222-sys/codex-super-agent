@@ -22,7 +22,9 @@ const faultChecks={
  'path-traversal':['superagent/knowledge.test.mjs','traversal cannot escape'],
  'redaction':['superagent/conversation-validation.test.mjs','reports redact credential'],
  'router-delivery-recovery':['superagent/presentation.test.mjs','never leaks raw worker prose'],
- 'bounded-read':['superagent/router.test.mjs','read count and total-character']
+ 'bounded-read':['superagent/router.test.mjs','read count and total-character'],
+ 'duplicate-intake':['superagent/conversation-faults.test.mjs','duplicate update'],
+ 'owner-filter':['superagent/conversation-faults.test.mjs','outsider callback']
 };
 function runFaultTest(name,root){const entry=faultChecks[name];if(!entry)throw Error('Unimplemented fault check '+name);const output=execFileSync(process.execPath,['--test','--test-reporter=tap','--test-name-pattern='+entry[1],entry[0]],{encoding:'utf8',windowsHide:true,timeout:60000,maxBuffer:300000});fs.writeFileSync(path.join(root,'fault.tap'),output);return {name,pass:/# pass [1-9]/.test(output)&&/# fail 0/.test(output),outputHash:sha(output)};}
 export async function runCase(definition,options){
@@ -69,7 +71,7 @@ export async function runCase(definition,options){
   const report=async(key,state,summary,extra={})=>{const t=get(key);if(t.threadId&&f.rpc.workers.has(t.threadId)&&t.turnId){await f.rpc.tool(t.threadId,t.turnId,'worker_report',{state,summary,...extra});f.rpc.complete(t.threadId,t.turnId);}else{f.system.store.put('task',t.id,{...t,status:{ready:'completed',failed:'failed',waiting:'waiting'}[state],report:{state,summary,...extra},summary});f.system.store.enqueue('reply','result:fixture:'+key+':'+counter,{taskId:t.id,eventId:t.sourceEventId,text:summary,report:{state,summary,...extra},artifactRoot:t.output,question:extra.question});}};
   const checks=[];const check=(name,pass,actual)=>checks.push({name,pass:!!pass,actual});
   try{
-    if(c.level==='F'){result.transport='deterministic';result.fault=runFaultTest(c.faultTest,root);check('deterministic:'+c.faultTest,result.fault.pass);}
+    if(c.level==='F'){const fault=c.faultTest||{O01:'duplicate-intake',R01:'owner-filter'}[c.id];result.transport='deterministic';result.fault=runFaultTest(fault,root);check('deterministic:'+fault,result.fault.pass);}
     else{
       await open();const s=()=>f.system;
       const fixture=c.fixture;
@@ -198,7 +200,7 @@ export async function runCase(definition,options){
        case 'knowledge-invalidated':check('quarantined',s().store.list('knowledge','published').length===0);check('B-informed',s().store.list('input').some(i=>i.taskId===aliases.B&&i.text.includes('knowledge')));break;
        case 'upload-md':check('upload-md',f.uploads.some(u=>u.method==='sendDocument'&&u.name.endsWith('.md')&&u.text?.includes('DELIVERY-862')));break;
        case 'upload-pdf-photo':check('upload-pdf',f.uploads.some(u=>u.name.endsWith('.pdf')&&u.size>50));check('upload-photo',f.uploads.some(u=>u.method==='sendPhoto'));break;
-       case 'correct-file-B':check('steel-file-uploaded',f.uploads.some(u=>u.name==='steel.md'&&u.text==='STEEL-852'));break;
+       case 'correct-file-B':check('steel-file-uploaded',f.uploads.some(u=>u.name==='steel.md'&&u.sha256===before.B.outputFiles.find(a=>a.path==='steel.md')?.sha256));break;
        case 'real-transcription':check('transcript-present',result.artifacts.some(a=>a.path.endsWith('transcript.txt')&&a.text?.trim())&&s().store.list('event').some(e=>e.message?.voice&&e.status!=='media-pending'));break;
        case 'media-bounded-failure':check('media-explicit-error',f.sent.some(m=>/附件|失败|过大/.test(m.text||'')));check('no-infinite-media-retry',!s().store.list('event','media-pending').length);break;
        case 'noise-clarification':check('no-execution',get('A').status==='running'&&get('B').status==='running');check('audio-uncertainty',f.sent.some(m=>/听|识别|清楚|不确定/.test(m.text||'')));break;
@@ -231,6 +233,7 @@ export async function runCase(definition,options){
   finally{
     if(f){result.calls??=[...fixtureCalls,...f.rpc.calls];result.sent??=[...fixtureSent,...f.sent];result.after??=taskSnapshot(f.system,aliases);result.errors??=f.errors;result.questions??=f.system.store.list('question');result.artifacts??=artifactSnapshot(path.join(root,'outputs'));
       result.toolFailures=events.filter(e=>e.kind==='tool-failure');
+      if(c.id.startsWith('L')){f.system.settings.save(baseline,f.system.settings.current.revision);result.baselineRestored=true;}
       for(const t of f.system.store.list('task'))if(t.turnId&&t.threadId&&!f.rpc.workers.has(t.threadId))await f.system.native.interrupt(t.threadId,t.turnId).catch(()=>{});
       await f.system.close().catch(()=>{});
     }
@@ -262,7 +265,7 @@ async function main(){const args=Object.fromEntries(process.argv.slice(2).reduce
  if(args.mode==='deterministic')list=list.filter(c=>c.level==='F');
  if(!args.smoke)list=[...list,...(catalog.stories||[]),...(args.round==='final'?[]:catalog.phrases?.[args.round]||[])];
  if(args.cases)list=list.filter(c=>args.cases.split(',').includes(c.id));
- const codeFiles=['core','router','routing','runtime','native','system','executor','delivery','controls','approvals','settings','scheduler','knowledge','files','supervision'].map(n=>'superagent/'+n+'.mjs').concat(['telegram-bridge/media.mjs','telegram-bridge/client.mjs']);
+ const codeFiles=['core','router','routing','runtime','native','system','executor','delivery','controls','approvals','settings','scheduler','knowledge','files','supervision','preferences'].map(n=>'superagent/'+n+'.mjs').concat(['telegram-bridge/media.mjs','telegram-bridge/client.mjs']);
  const manifest={runId:path.basename(out),round:args.round,sourceCommit,node:process.version,codexVersion:fs.existsSync(path.join(base,'installed-tools.json'))?JSON.parse(fs.readFileSync(path.join(base,'installed-tools.json'))).cliVersion:null,caseHash:sha(fs.readFileSync('superagent/conversation-cases.json')),productHash:sha(JSON.stringify(codeFiles.map(f=>[f,sha(fs.readFileSync(f))]))),mediaHashes:fs.existsSync(path.join(base,'assets'))?Object.fromEntries(fs.readdirSync(path.join(base,'assets')).map(n=>[n,sha(fs.readFileSync(path.join(base,'assets',n)))])):null,models:baseline,transport:'simulated-telegram',startedAt:new Date().toISOString(),count:list.length};fs.writeFileSync(path.join(out,'manifest.json'),JSON.stringify(manifest,null,2));
  const existing=fs.existsSync(path.join(out,'cases.jsonl'))?fs.readFileSync(path.join(out,'cases.jsonl'),'utf8').trim().split('\n').filter(Boolean).map(s=>JSON.parse(s)):[];
  const jobs=list.flatMap(c=>Array.from({length:args.smoke?1:c.repetitions},(_,i)=>({c,attempt:i+1}))).filter(j=>!existing.some(r=>r.caseId===j.c.id&&r.attempt===j.attempt));

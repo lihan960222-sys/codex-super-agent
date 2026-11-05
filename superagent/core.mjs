@@ -26,7 +26,7 @@ export class Core {
       this.store.put('event',eventId,{...event,status:'assigned'});this.store.enqueue('launch',id,{taskId:id,generation:1,epoch:control.epoch});return task;
     });
   }
-  addInput(event,taskId){const id=event.id+':'+taskId;if(!this.store.get('input',id))this.store.put('input',id,{id,eventId:event.id,taskId,text:event.text,media:event.media||[],status:'pending',at:event.at||now()});const stored=this.store.get('event',event.id);if(stored?.status==='received')this.store.put('event',event.id,{...stored,status:'assigned'});return id;}
+  addInput(event,taskId){const id=event.id+':'+taskId;if(!this.store.get('input',id))this.store.put('input',id,{id,eventId:event.id,...event.ownerEventId?{ownerEventId:event.ownerEventId}:{},taskId,text:event.text,media:event.media||[],status:'pending',at:event.at||now()});const stored=this.store.get('event',event.id);if(stored?.status==='received')this.store.put('event',event.id,{...stored,status:'assigned'});return id;}
   attach(eventId,taskId){
     return this.store.atomic(()=>{
       const event=this.store.get('event',eventId),t=this.task(taskId);if(!event)throw Error('Unknown event');if(stopped(t))throw Error('Task stopped; explicit resume required');
@@ -37,14 +37,16 @@ export class Core {
   }
   canLaunch(id){const t=this.task(id);return !this.store.get('meta','control').paused&&!stopped(t)&&['queued','waiting'].includes(t.status);}
   validateControl(plan){
-    if(!plan||!['selected','pause_all','resume_all'].includes(plan.mode)||Object.keys(plan).some(k=>!['mode','startTaskIds','stopTaskIds'].includes(k)))throw Error('Invalid control plan');
-    const start=plan.startTaskIds??[],stop=plan.stopTaskIds??[];
-    for(const ids of [start,stop])if(!Array.isArray(ids)||ids.length>50||ids.some(id=>!validId(id))||new Set(ids).size!==ids.length)throw Error('Invalid control targets');
-    if(plan.mode!=='selected'&&(start.length||stop.length)||plan.mode==='selected'&&!start.length&&!stop.length||start.some(id=>stop.includes(id)))throw Error('Contradictory or empty control plan');
-    for(const id of [...start,...stop])this.task(id);
+    if(!plan||!['selected','pause_all','resume_all'].includes(plan.mode)||Object.keys(plan).some(k=>!['mode','startTaskIds','stopTaskIds','pauseTaskIds'].includes(k)))throw Error('Invalid control plan');
+    const start=plan.startTaskIds??[],stop=plan.stopTaskIds??[],pause=plan.pauseTaskIds??[];
+    for(const ids of [start,stop,pause])if(!Array.isArray(ids)||ids.length>50||ids.some(id=>!validId(id))||new Set(ids).size!==ids.length)throw Error('Invalid control targets');
+    if(plan.mode==='selected'&&!start.length&&!stop.length&&!pause.length)throw Error('Empty control plan: omit no-change options; the host supplies Cancel. Use ignore to withdraw a pending request.');
+    if(plan.mode!=='selected'&&(start.length||stop.length||pause.length)||start.some(id=>stop.includes(id)||pause.includes(id))||stop.some(id=>pause.includes(id)))throw Error('Contradictory control plan: choose one state change per task or clarify the conflict.');
+    for(const id of [...start,...stop,...pause])this.task(id);
     for(const id of start)if(['completed','failed'].includes(this.task(id).status))throw Error('Finished task needs a new authorized followup, not resume');
     for(const id of stop)if(['completed','failed'].includes(this.task(id).status))throw Error('Finished task cannot be stopped; report its actual state');
-    return {mode:plan.mode,startTaskIds:start,stopTaskIds:stop};
+    for(const id of pause)if(['completed','failed'].includes(this.task(id).status))throw Error('Finished task cannot be paused; report its actual state');
+    return {mode:plan.mode,startTaskIds:start,stopTaskIds:stop,...pause.length?{pauseTaskIds:pause}:{}};
   }
   applyControl(input){return this.store.atomic(()=>{
     const plan=this.validateControl(input),before=this.store.get('meta','control');let affected=[];
@@ -52,6 +54,7 @@ export class Core {
     else if(plan.mode==='resume_all'){affected=this.store.list('task').filter(t=>!t.manualStop&&['paused','queued'].includes(t.status)).map(t=>t.id);this.resume(null);}
     else {
       for(const id of plan.stopTaskIds)if(!this.task(id).manualStop)this.stop(id);
+      for(const id of plan.pauseTaskIds||[])this.pause(id);
       if(plan.startTaskIds.length&&before.paused){
         // Unlock selected work without incidentally launching other tasks accepted while paused.
         for(const t of this.store.list('task'))if(t.status==='queued'&&!plan.startTaskIds.includes(t.id)){this.store.put('task',t.id,{...t,status:'paused',generation:t.generation+1,updatedAt:now()});this.store.cancelEffect('launch',t.id);}
@@ -62,10 +65,11 @@ export class Core {
         if(t.status==='queued'&&!t.manualStop)this.store.enqueue('launch',id,{taskId:id,generation:t.generation,epoch:this.store.get('meta','control').epoch});
         else this.resume(id);
       }
-      affected=[...plan.stopTaskIds,...plan.startTaskIds];
+      affected=[...plan.stopTaskIds,...plan.pauseTaskIds||[],...plan.startTaskIds];
     }
-    return {plan,...this.store.get('meta','control'),tasks:affected.map(id=>{const t=this.task(id);return {id,title:t.title,status:t.status,generation:t.generation,manualStop:t.manualStop};}),at:now()};
+    return {plan,...this.store.get('meta','control'),tasks:affected.map(id=>{const t=this.task(id),r=this.store.get('responsibility',t.responsibilityId);return {id,title:t.title,status:t.status,generation:t.generation,manualStop:t.manualStop,workerName:r?.displayName||r?.name,interruptPending:!!this.store.get('lease',id)&&['paused','stopped'].includes(t.status)};}),at:now()};
   });}
+  pause(id){return this.store.atomic(()=>{const t=this.task(id);if(t.manualStop||t.status==='paused')return;if(['completed','failed'].includes(t.status))throw Error('Finished task cannot be paused');const active=['running','preparing','uncertain'].includes(t.status);this.store.put('task',id,{...t,status:'paused',manualStop:false,pausedFor:null,pauseReason:'owner',generation:t.generation+1,updatedAt:now()});this.store.cancelEffect('launch',id);if(active)this.queueInterrupt(t);});}
   stop(id){return this.store.atomic(()=>{
     if(id!==null&&['completed','failed'].includes(this.task(id).status))throw Error('Finished task cannot be stopped; report its actual state');
     let control=this.store.get('meta','control');if(id===null){control={paused:true,epoch:control.epoch+1};this.store.put('meta','control',control);}
@@ -83,7 +87,7 @@ export class Core {
     const control=this.store.get('meta','control');if(id===null)this.store.put('meta','control',{paused:false,epoch:control.epoch+1});
     for(const t of id===null?this.store.list('task','paused'):[this.task(id)]){
       if(id===null&&stopped(t))continue;
-      t.manualStop=false;t.status='queued';t.generation++;t.updatedAt=now();this.store.put('task',t.id,t);
+      t.manualStop=false;t.status='queued';t.pausedFor=null;t.pauseReason=null;t.generation++;t.updatedAt=now();this.store.put('task',t.id,t);
       const event={id:'resume:'+t.id+':'+t.generation,source:'control',text:'Resume this previously authorized task from its saved native context and verified artifacts. Preserve completed work; do not blindly repeat earlier side effects.',at:now()};this.receive(event);this.addInput(event,t.id);
       this.store.enqueue('reconcile',t.id,{taskId:t.id,generation:t.generation});
       this.store.enqueue('launch',t.id,{taskId:t.id,generation:t.generation});

@@ -5,6 +5,7 @@ export function conflicts(a,b){a=normalize(a);b=normalize(b);return a==='desktop
 export class Scheduler {
  constructor(core,{capacity=()=>2}={}){this.core=core;this.store=core.store;this.capacity=capacity;}
  next(){if(this.store.get('meta','control').paused)return [];return this.store.list('task').filter(t=>!t.manualStop&&t.status==='queued').sort((a,b)=>(a.origin==='proactive')-(b.origin==='proactive')||a.createdAt.localeCompare(b.createdAt));}
+ reason(id){const t=this.core.task(id);if(t.status!=='queued')return null;if(this.store.get('meta','control').paused)return '全局调度已暂停';const leases=this.store.list('lease').filter(l=>l.taskId!==id),resources=t.resources?.length?t.resources:['desktop'],blocked=leases.find(l=>resources.some(r=>l.resources.some(s=>conflicts(r,s))));if(blocked)return '等待共享资源：'+this.core.task(blocked.taskId).title+' 尚未释放资源';if(leases.length>=this.capacity())return '等待并发名额（上限 '+this.capacity()+'）';return '已入队，等待调度';}
  acquire(id){return this.store.atomic(()=>{const t=this.core.task(id),leases=this.store.list('lease');if(!this.core.canLaunch(id))return null;const own=leases.find(l=>l.taskId===id);if(own)return own.generation===t.generation?own:null;
    if(leases.length>=this.capacity())return null;const resources=t.resources?.length?t.resources:['desktop'];if(resources.some(r=>typeof r!=='string'||r.length>2000))throw Error('Invalid task resources');
    if(leases.some(l=>resources.some(r=>l.resources.some(s=>conflicts(r,s)))))return null;

@@ -1,5 +1,13 @@
 # Changes
 
+## Conversation validation repair 1 — 2026-11-05
+
+After the complete first round (125 pass / 60 fail / 0 blocked across 185 accepted results), fix the reproduced routing/control/continuation failures in one batch: independent multi-create, selected atomic pause/start/stop, scoped resume requirements, concrete short names, semantic handling of bound controls/new tasks, missing Router rollout recovery, queue/wait facts, terminal media/command errors, reply-bound approvals, and send-time state recheck. Ambiguous control uses canonical task/action cards with one-use Confirm/Adjust/Cancel and version guards.
+
+Persist explicit owner style updates without replacing existing preferences; cache file metadata/content version and place stable style in Router base instructions, rotating only Router when changed. Explicit hard style limits are checked locally before acceptance; normal replies require no separate style-review model call. This is no guarantee of native prompt-cache hits or subjective tone perfection.
+
+Verification: 230/230 automated Windows checks passed. Native failed-case/neighbor replay and later full rounds remain pending at this commit. Production unchanged; raw evidence and preference history stay private.
+
 ## Validation model baseline — 2026-11-05
 
 Pin all three validation rounds and final verification to the user-selected Router `gpt-6-luna / medium` and Worker `gpt-6.1-sol / medium`. Model-switch cases remain isolated exceptions with recorded actual values. Unavailable models block testing instead of silently falling back. Documentation only; production settings unchanged and no tests executed.
