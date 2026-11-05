@@ -1,5 +1,9 @@
 # Changes
 
+## Round 2 collected — 2026-11-05
+
+Complete coverage: 185 executions, 168 pass / 17 fail / 0 blocked; 12 deterministic recovery timelines pass, four native cache/card supplements pass and adjustment-question cleanup fails. Reuse 94 identical post-repair verification executions with explicit provenance and matching product/catalog hashes; complete the other 91 on the same product version. Phase-specific expressions are not inherited. A tested aggregator rejects missing/duplicate attempts and retains raw failure evidence. Full Windows suite: 235/235 passed after a preserved isolated test-process anomaly and limited-concurrency recheck. Product repair 2 has not started at this checkpoint; see `docs/validation/round-2.md`.
+
 ## Validation supplements — 2026-11-05
 
 Add synthetic recovery timelines, native cache/card probes, 20/100/500-task recall and actual 33-decision rotation probes, seeded state transitions, and a real-clock 30-minute soak script for subsequent rounds. The soak and scale probes are prepared, not yet executed at this commit. Correct the evidence oracle so a sibling task's running clause does not falsely indict a paused task; retain original native results and separate any regrading.
